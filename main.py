@@ -38,6 +38,34 @@ def actions_extract(chunk, Prompt):
     return response.json()["response"]
 
 
+def evaluate_output(output):
+    prompt = Prompts.evaluation_prompt(output)
+
+    response = requests.post(
+        "http://localhost:11434/api/generate",
+        json={
+            "model": "mistral-repairgenie",
+            "prompt": prompt,
+            "stream": False
+        }
+    )
+    return response.json()["response"]
+
+
+def improve_output(output):
+    prompt = Prompts.improvement_prompt(output)
+
+    response = requests.post(
+        "http://localhost:11434/api/generate",
+        json={
+            "model": "mistral-repairgenie",
+            "prompt": prompt,
+            "stream": False
+        }
+    )
+
+    return response.json()["response"]
+
 with open(args.file, 'r', encoding="utf-8") as f:
     meeting_notes = f.read()
 
@@ -63,5 +91,45 @@ for i, chunk in enumerate(Chunks):
     except json.JSONDecodeError:
         print(f" JSON failed on chunk {i}")
 
-print(final_output)
+# print(final_output)
 
+evaluate_result = evaluate_output(final_output)
+
+# print(evaluate_result)
+
+if "Yes" in evaluate_result:
+    print("Improving Output")
+    improved = improve_output(json.dumps(final_output))
+
+    try:
+        final_output = json.loads(improved)
+        print(final_output)
+    except:
+        print("Improvement parsing failed, attempting JSON repair")
+        
+        fix_prompt = Prompts.json_fix_prompt(improved)
+
+        fixed = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": "mistral-repairgenie",
+                "prompt": fix_prompt,
+                "stream": False
+            }
+        ).json()["response"]
+
+        try:
+            final_output = json.loads(fixed)
+            print("✅ JSON repaired successfully")
+            print(final_output)
+        except:
+            print("❌ JSON repair failed, keeping original output")
+
+        
+elif "No" in evaluate_result:
+    print("No improvement needed")
+    print(evaluate_result)
+
+else:
+    "evaluate result not in expected format"
+    print(evaluate_result)
