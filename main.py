@@ -33,38 +33,19 @@ def chunk_by_paragraph(text, max_characters=6000):
 
     return Chunks
 
-def actions_extract(chunk, Prompt):
+
+def call_llm(function, output):
+    prompt_map = {"extract_actions": Prompts.actions_extraction_prompt(output),
+                  "evaluate_output": Prompts.evaluation_prompt(output),
+                  "deduplicate_prompt": Prompts.deduplicate_prompt(output),
+                  "owner_fix_prompt": Prompts.owner_fix_prompt(output),
+                  "clarity_prompt" : Prompts.clarity_prompt(output),
+                  "Json_repair": Prompts.json_fix_prompt(output)
+                }
+    Prompt = prompt_map[f"{function}"]
     response = requests.post("http://localhost:11434/api/generate", json={"model": "mistral-repairgenie", "prompt":Prompt, "stream":False })
     return response.json()["response"]
 
-
-def evaluate_output(output):
-    prompt = Prompts.evaluation_prompt(output)
-
-    response = requests.post(
-        "http://localhost:11434/api/generate",
-        json={
-            "model": "mistral-repairgenie",
-            "prompt": prompt,
-            "stream": False
-        }
-    )
-    return response.json()["response"]
-
-
-def improve_output(output):
-    prompt = Prompts.improvement_prompt(output)
-
-    response = requests.post(
-        "http://localhost:11434/api/generate",
-        json={
-            "model": "mistral-repairgenie",
-            "prompt": prompt,
-            "stream": False
-        }
-    )
-
-    return response.json()["response"]
 
 with open(args.file, 'r', encoding="utf-8") as f:
     meeting_notes = f.read()
@@ -78,8 +59,8 @@ final_output = {"action_items": [], "risks": [], "open_questions":[]}
 
 
 for i, chunk in enumerate(Chunks):
-    Prompt = Prompts.actions_extraction_prompt(chunk)
-    response = actions_extract(chunk, Prompt)
+    # Prompt = Prompts.actions_extraction_prompt(chunk)
+    response = call_llm("extract_actions", chunk)
 
     try:
         parsed = json.loads(response)
@@ -91,45 +72,32 @@ for i, chunk in enumerate(Chunks):
     except json.JSONDecodeError:
         print(f" JSON failed on chunk {i}")
 
-# print(final_output)
 
-evaluate_result = evaluate_output(final_output)
 
-# print(evaluate_result)
+issues = call_llm("evaluate_output", final_output)
+print(issues)
 
-if "Yes" in evaluate_result:
-    print("Improving Output")
-    improved = improve_output(json.dumps(final_output))
+data_str = json.dumps(final_output)
 
-    try:
-        final_output = json.loads(improved)
-        print(final_output)
-    except:
-        print("Improvement parsing failed, attempting JSON repair")
-        
-        fix_prompt = Prompts.json_fix_prompt(improved)
+if "duplicate_items" in issues:
+    print("🔧 Fixing duplicates...")
+    data_str = call_llm("deduplicate_prompt", data_str)
 
-        fixed = requests.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": "mistral-repairgenie",
-                "prompt": fix_prompt,
-                "stream": False
-            }
-        ).json()["response"]
+if "missing_owner" in issues:
+    print("🔧 Fixing missing owners...")
+    data_str = call_llm("owner_fix_prompt", data_str)
 
-        try:
-            final_output = json.loads(fixed)
-            print("✅ JSON repaired successfully")
-            print(final_output)
-        except:
-            print("❌ JSON repair failed, keeping original output")
+if "vague_tasks" in issues:
+    print("🔧 Improving clarity...")
+    data_str = call_llm("clarity_prompt", data_str)
 
-        
-elif "No" in evaluate_result:
-    print("No improvement needed")
-    print(evaluate_result)
-
-else:
-    "evaluate result not in expected format"
-    print(evaluate_result)
+# final parse
+try:
+    final_output = json.loads(data_str)
+    print(final_output)
+except:
+    print("⚠️ Final parsing failed, repairing Json")
+    fixed_output = call_llm("Json_repair", final_output)
+    final_output = json.loads(fixed_output)
+    print("✅ JSON repaired successfully")
+    print(final_output)

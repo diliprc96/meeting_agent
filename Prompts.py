@@ -30,25 +30,65 @@ Meeting Notes:
 
 def evaluation_prompt(output_json):
     return f'''
-You are reviewing extracted meeting insights.
+You are analyzing/reviewing extracted meeting insights from the transcript.
 
-Check for the following issues:
+Identify issues in the data:
 
-1. Duplicate or overlapping action items
-2. Missing or unclear owners
-3. Vague or unclear tasks
-4. Redundant risks or questions
+Categories:
+1. duplicate_items
+2. missing_owner
+3. vague_tasks
+4. redundant_risks
+5. no_issuess
 
-If issues exist, describe them briefly.
+Return ONLY JSON:
+{{
+  "issues":["duplicate_items, "missing_owner"]
+}}
 
-If everything looks good, say: "No major issues".
-
-Output format:
-- issues_found: Yes/No
-- comments: short explanation
+If no issues:
+{{
+  "issues:["no_issues"]
+}}
 
 Data:
 {output_json}
+'''
+
+def deduplicate_prompt(data):
+    return f'''
+Remove duplicate or overlapping action items.
+Merge similar ones.
+
+Return ONLY JSON.
+
+Data:
+{data}
+'''
+
+
+def owner_fix_prompt(data):
+    return f'''
+Some action items have missing or unclear owners.
+
+Infer or assign appropriate owners if possible.
+
+Return ONLY JSON.
+
+Data:
+{data}
+'''
+
+def clarity_prompt(data):
+    return f'''
+Some tasks are vague.
+
+Rewrite them to be clear and actionable.
+
+Return ONLY JSON.
+
+Data:
+{data}
 '''
 
 def improvement_prompt(output_json):
@@ -72,7 +112,6 @@ Return ONLY valid JSON:
 Data:
 {output_json}
 '''
-
 
 
 def json_fix_prompt(broken_output):
