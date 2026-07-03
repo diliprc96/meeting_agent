@@ -3,6 +3,7 @@ import argparse
 import os
 import Prompts
 import json
+from datetime import datetime
 
 parser = argparse.ArgumentParser(description="meeting notes processor")
 parser.add_argument("file", help="Path to meeting notes file (.txt)")
@@ -12,6 +13,17 @@ args = parser.parse_args()
 if not os.path.exists(args.file):
     print("File not found.")
     exit(1)
+
+
+def save_output_to_file(data):
+    os.makedirs("outputs", exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_file = os.path.join("outputs", f"meeting_output_{timestamp}.json")
+
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+    print(f"Saved output to: {output_file}")
 
 def estimate_tokens(text):
     return len(text) // 4
@@ -95,9 +107,11 @@ if "vague_tasks" in issues:
 try:
     final_output = json.loads(data_str)
     print(final_output)
+    save_output_to_file(final_output)
 except:
     print("⚠️ Final parsing failed, repairing Json")
     fixed_output = call_llm("Json_repair", final_output)
     final_output = json.loads(fixed_output)
     print("✅ JSON repaired successfully")
     print(final_output)
+    save_output_to_file(final_output)
